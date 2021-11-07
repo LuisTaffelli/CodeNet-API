@@ -3,7 +3,8 @@ const { Sequelize, Model } = require("sequelize");
 const fn = require("./utils.js");
 const db = require("../db.js");
 const bcrypt = require("bcrypt");
-const saltRounds = 10;
+const { SALTROUNDS } = process.env;
+const saltRounds = SALTROUNDS;
 
 //MAIN USER
 router.get("/", async (req, res, next) => {

@@ -3,9 +3,9 @@ const {Privileges} = require("../db.js");
 const { DB_UserID,BD_createPrivileges,DB_validatePassword,DB_findUserCreated, DB_userSearch,DB_createUser, DB_findUsersUsername } = require("./utils.js");
 const router = Router();
 const bcrypt = require("bcrypt")
-const saltRounds = 10;
 const jwt = require("jsonwebtoken");
-const { JWT_SECRET, JWT_EXPIRE_TIME, JWT_COOKIE_EXPIRE } = process.env;
+const { JWT_SECRET, JWT_EXPIRE_TIME, JWT_COOKIE_EXPIRE, SALTROUNDS } = process.env;
+const saltRounds = SALTROUNDS;
 
 router.post('/', async (req, res) => {
     const {email, username, password, title} = req.body;

@@ -3,7 +3,9 @@ const { Sequelize, Model } = require("sequelize");
 const { User, Post } = require("../db.js");
 const fn = require("./utils.js");
 const bcrypt = require("bcrypt");
-const saltRounds = 10;
+const AuthControllers = require('../controllers/AuthControllers.js')
+const { SALTROUNDS } = process.env;
+const saltRounds = SALTROUNDS;
 
 const sanitizeUser = (data) => {
   if (Array.isArray(data)) {
@@ -104,7 +106,7 @@ router.get("/:username/comments", async (req, res, next) => {
   }
 });
 //REGISTER
-router.post("/register", async (req, res, next) => {
+router.post("/register",  async (req, res, next) => {
   try {
     let { email, username, password } = req.body;
     let errorsPassword = await fn.DB_validatePassword(password);
@@ -132,7 +134,7 @@ router.post("/register", async (req, res, next) => {
   }
 });
 //UPDATE
-router.put("/:id", async (req, res, next) => {
+router.put("/:id", AuthControllers.isAuthenticated, async (req, res, next) => {
   try {
     if (req.body.password) {
       let errors = await fn.DB_validatePassword(req.body.password);
