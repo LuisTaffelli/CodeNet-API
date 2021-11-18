@@ -14,7 +14,7 @@ const {
 
 // Syncing all the models at once.
 conn.sync({ force: false }).then(() => {
-  server.listen(3001, () => {
+  server.listen(process.env.PORT, () => {
     //CARGA DE DATOS
     //PASOS A SEGUIR :
     //1---> DESCOMENTE PRIMERO: DB_userCreates(DataUsers)
@@ -30,6 +30,6 @@ conn.sync({ force: false }).then(() => {
     //Descomentar y comentar una sola vez!! Para crear el admin
 
     // DB_AdminSignUp()
-    console.log("%s listening at 3001"); // eslint-disable-line no-console
+    console.log(`${process.env.PORT} LISTENING`); // eslint-disable-line no-console
   });
 });
