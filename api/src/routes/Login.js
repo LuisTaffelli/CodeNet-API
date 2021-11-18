@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const { DB_userSearch } = require("./utils.js");
+const { DB_userSearch, BD_loginBan } = require("./utils.js");
 const jwt = require("jsonwebtoken");
 const { JWT_SECRET, JWT_EXPIRE_TIME, JWT_COOKIE_EXPIRE } = process.env;
 const router = Router();
@@ -13,9 +13,12 @@ router.post("/", async (req, res) => {
     }
 
     let userLogin = await DB_userSearch(username, email, password);
-
-
     if (userLogin.error) throw new Error(userLogin.error);
+
+    let userStrike = await BD_loginBan(username)
+    console.log(userStrike, "strikes")
+    if(userStrike.error) res.status(400).send(userStrike.error)
+
 
 
     let sanitized = {
@@ -42,11 +45,8 @@ router.post("/", async (req, res) => {
     res.cookie("codenet", token, cookiesOptions);
     res.status(200).send({ user: sanitized, success: true });
   } catch (e) {
+    console.log(e, "error")
     res.status(500).send({ errors: e, success: false });
   }
 });
 module.exports = router;
-
-
-
-

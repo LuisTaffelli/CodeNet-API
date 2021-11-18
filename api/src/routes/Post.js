@@ -1,6 +1,6 @@
 const { Router } = require("express");
 const { Sequelize, Model } = require("sequelize");
-const { User, Post } = require("../db.js");
+const { User, Post, Comment, Likes } = require("../db.js");
 const {
   DB_UserID,
   validateUpdatePost,
@@ -11,58 +11,169 @@ const {
 const Op = Sequelize.Op;
 const router = Router();
 const AuthControllers = require('../controllers/AuthControllers.js')
-
-// const ruta = require("archivo")
-// router.use("/", ruta)
+const multer = require("multer");
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
 // router.use("/", );
+
+const modifiedPost = async (idPost) => {
+  return await Post.findOne({
+    where: { idPost },
+    include: [
+      { model: User, attributes: ["image", "username"] },
+      {
+        model: Comment,
+        include: [{ model: User, attributes: ["image", "username"] }],
+      },
+      {
+        model: Likes,
+        as: "userLikes",
+        include: [{ model: User, attributes: ["username"] }],
+      },
+    ],
+  });
+};
 
 const paginate = (page = 0, arr) => {
   const postsPerPage = 15;
   const to = page * postsPerPage + postsPerPage;
 
+  let posts = arr
+    .slice(page * postsPerPage, to < arr.length ? to : arr.length)
+    .map((post) => {
+      if (post.imageData) {
+        const image = post.imageData.toString("base64");
+        post["imageData"] = image;
+      }
+      return post;
+    });
+
+  const totalPages = Math.ceil(arr.length / postsPerPage);
+
   return {
-    posts: arr.slice(page * postsPerPage, to < arr.length ? to : arr),
-    totalPages: arr.length,
+    posts,
+    totalPages,
   };
 };
 
+function ordenarTags(todos, tags, orden) {
+  let arr;
+  let conTags = [];
+
+  let sinTags = [];
+  arr = todos.map((post, i, arr) => {
+    let cant = tags?.filter((tag) => {
+
+      if (post.tag.includes(tag)) {
+        return post.idPost;
+      }
+
+    });
+    let c = 0;
+    if (cant?.length !== 0) {
+      while (c < tags?.length) {
+        if (cant?.length === tags?.length - c) {
+
+          while (!conTags[c]) {
+            conTags.push([]);
+          }
+          conTags[c] = [...conTags[c], post];
+        }
+        c++;
+      }
+    } else {
+      sinTags.push(post);
+    }
+  });
+  let ordenadosPorTags = [];
+  for (let arr of conTags) {
+    if (orden === "cronologico") {
+      ordenadosPorTags = [...ordenadosPorTags, ...arr];
+    } else {
+      ordenadosPorTags = [...ordenadosPorTags, ...ordenar(orden, arr)];
+    }
+  }
+  let ordenadosSinTags;
+  if (orden === "cronologico") {
+    ordenadosSinTags = sinTags;
+  } else {
+    ordenadosSinTags = ordenar(orden, sinTags);
+  }
+  return [...ordenadosPorTags, ...ordenadosSinTags];
+}
+
+
+function ordenamiento(arr, orden) {
+  console.log(arr, orden);
+
+  return arr.sort(function (a, b) {
+    if (a[orden]?.length < b[orden]?.length) {
+      return 1;
+    }
+    if (a[orden]?.length > b[orden]?.length) {
+      return -1;
+    }
+    return 0;
+  });
+}
+
+const ordenar = (how, arr) => {
+  if (how === "combinados") {
+    return arr.sort(function (a, b) {
+      if (
+        a.userLikes.length + a.comments.length <
+        b.userLikes.length + b.comments.length
+      ) {
+        return 1;
+      }
+      if (
+        a.userLikes.length + a.comments.length >
+        b.userLikes.length + b.comments.length
+      ) {
+        return -1;
+      }
+      return 0;
+    });
+  } else {
+    return ordenamiento(arr, how);
+  }
+};
 //Devuelve post de una categoria o si no todos los post
 router.get("/", async (req, res) => {
-
   // const posts = await Post.findAll({order: [['createdAt', 'DESC']]})
   // return res.send(posts)
 
-  const { tag, page } = req.query;
+  const { tag, page, orden } = req.query;
+
+  const tags = tag?.split(",")
+
   const allPosts = await DB_Postsearch({});
+  let finalPosts = ordenarTags(allPosts, tags, orden);
+  // let postCategoria = allPosts.filter((e) =>
+  //   e.tag
+  //     .map((postTag) => postTag && postTag.toLowerCase())
+  //     .includes(tag.toLowerCase())
+  // );
+  // if (!postCategoria.length)
+  //   res.status(404).send(paginate(page, allPosts));
 
-  if (tag) {
-    let postCategoria = allPosts.filter((e) =>
-      e.tag
-        .map((postTag) => postTag && postTag.toLowerCase())
-        .includes(tag.toLowerCase())
-    );
-
-    if (!postCategoria.length)
-      res.status(404).send("There is no post with that tag");
-
-    const { posts, totalPages } = paginate(page, postCategoria);
-
-    res.status(200).send({ posts, totalPages });
-  } else {
-    const { posts, totalPages } = paginate(page, allPosts);
-    res.status(200).send({ posts, totalPages });
-  }
+  let { posts, totalPages } = paginate(page, finalPosts);
+  res.status(200).send({ posts, totalPages });
 });
 
 //Trae todos los posteos que hizo un usuario
 router.get("/", async (req, res, next) => {
+
+  console.log("holaaaaaa");
+
   try {
     const { username } = req.body;
     if (!!Number(username)) {
       return next();
     }
     const postName = await DB_Postsearch({ username: username });
+    console.log(postName);
     postName ? res.send(postName) : res.send("This user has no Post");
   } catch (e) {
     res.status(404).send("Error with the username");
@@ -85,31 +196,46 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
-router.post("/", AuthControllers.isAuthenticated, async (req, res, next) => {
-  const { title, content, image, tag, likes, username } = req.body;
+router.post("/", upload.single("image"), AuthControllers.isAuthenticated, async (req, res) => {
+  let { title, content, tag, username, type } = req.body;
+
+  let orden = req.query.orden;
+  let tags = req.query.tags?.split(",");
+
+
   try {
     let userDB = await DB_UserID(username);
+
+    if (typeof tag === "string" && tag.length) tag = tag.split(",");
+
+    let image = {};
+    if (req.file) {
+      image["imageType"] = req.file.mimetype;
+      image["imageName"] = req.file.originalname;
+      image["imageData"] = req.file.buffer;
+    }
+
     let createPost = await Post.create({
-      image,
-      likes,
+      ...image,
       content,
-      tag,
+      tag: tag || [],
+      type,
       title,
       userId: userDB.id,
     });
+
     await userDB.addPost(createPost);
 
     const allPosts = await DB_Postsearch({});
-    const { posts, totalPages } = paginate(0, allPosts);
-    res.status(200).send({ posts, totalPages });
+    let finalPosts = ordenarTags(allPosts, tags, orden);
+    res.status(200).send({ ...paginate(0, finalPosts), success: true });
   } catch (e) {
-    res.status(404).send({ success: false, error: "Cant create post" });
+    res.status(404).send({ success: false, error: e });
   }
 });
 
 //Eliminacion de un Post
 router.delete("/:id", AuthControllers.isAuthenticated, async (req, res) => {
-
   try {
     const { id } = req.params;
     const deletePost = await DB_Postdestroy(id);
@@ -125,11 +251,11 @@ router.delete("/:id", AuthControllers.isAuthenticated, async (req, res) => {
 router.put("/:id", AuthControllers.isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
-    const updatePost = await DB_Postedit(id, req.body);
+    console.log(req.body);
+    await DB_Postedit(id, req.body);
 
-    const allPosts = await DB_Postsearch({});
-    const { posts, totalPages } = paginate(0, allPosts);
-    res.status(200).send({ posts, totalPages, success: true });
+    const post = await modifiedPost(id);
+    res.status(200).send({ post, success: true });
   } catch (e) {
     res.status(404).send({ success: false, error: "Cant apply changes" });
   }

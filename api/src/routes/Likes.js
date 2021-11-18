@@ -2,9 +2,34 @@ const router = require("express").Router();
 const { Sequelize, Model } = require("sequelize");
 const fn = require("./utils.js");
 const db = require("../db.js");
+const { Post } = require("../db.js");
 const bcrypt = require("bcrypt");
-const { SALTROUNDS } = process.env;
-const saltRounds = SALTROUNDS;
+const saltRounds = 10;
+const {
+  DB_UserID,
+  validateUpdatePost,
+  DB_Postsearch,
+  DB_Postdestroy,
+  DB_Postedit,
+} = require("./utils.js");
+
+const modifiedPost = async (idPost) => {
+  return await db.Post.findOne({
+    where: { idPost },
+    include: [
+      { model: db.User, attributes: ["image", "username"] },
+      {
+        model: db.Comment,
+        include: [{ model: db.User, attributes: ["image", "username"] }],
+      },
+      {
+        model: db.Likes,
+        as: "userLikes",
+        include: [{ model: db.User, attributes: ["username"] }],
+      },
+    ],
+  });
+};
 
 //MAIN USER
 router.get("/", async (req, res, next) => {
@@ -25,23 +50,27 @@ router.get("/", async (req, res, next) => {
 });
 //POSTS Likes/Dislike
 router.post("/", async (req, res, next) => {
-  console.log(req.body);
-  return;
   const { userId, postIdPost } = req.body;
+  let user = await db.User.findOne({ where: { username: userId } });
+
+  if (!user) return res.send({ errors: "el usuario no existe" });
   if (!userId || !postIdPost) return res.send({ errors: "datos falsos" });
   try {
     let findPost = await db.Likes.findOne({
-      where: { userId, postIdPost },
+      where: { userId: user.id, postIdPost },
     }).catch((e) => ({ errors: "fatal errors" }));
     if (findPost && findPost.errors) return res.send(findPost);
     if (findPost) {
-      findPost.destroy();
-      return res.send({ like: "se elimino el like" });
+      await findPost.destroy();
+      let post = await modifiedPost(postIdPost);
+      return res.send({ like: "se elimino el like", post });
     }
-    let likePost = await db.Likes.create(req.body);
-    if (likePost) return res.send({ like: "se agrego un like" });
+    let likePost = await db.Likes.create({ userId: user.id, postIdPost });
+    let post = await modifiedPost(postIdPost);
+    if (likePost) return res.send({ like: "se agrego un like", post });
     else return res.send({ errors: "Post not found" }).status(200);
   } catch (e) {
+    console.log(e);
     res.sendStatus(500);
   }
 });

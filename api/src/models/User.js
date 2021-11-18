@@ -16,7 +16,6 @@ module.exports = (sequelize) => {
       },
       name: {
         type: DataTypes.STRING,
-        allowNull: false,
         validate: {
           isAlpha: {
             args: true,
@@ -30,7 +29,6 @@ module.exports = (sequelize) => {
       },
       lastname: {
         type: DataTypes.STRING,
-        allowNull: false,
         validate: {
           isAlpha: {
             args: true,
@@ -112,6 +110,15 @@ module.exports = (sequelize) => {
           },
         },
       },
+      strike:{
+        type: DataTypes.ARRAY(DataTypes.JSON),
+        allowNull:true,
+      },
+      dayBan:{
+        type: DataTypes.DATE,
+        allowNull: true,
+      }
+    
     },
     {
       timestamps: false,

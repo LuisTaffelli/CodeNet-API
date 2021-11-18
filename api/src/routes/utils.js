@@ -9,14 +9,13 @@ const {
   Likes,
   User_Follow,
   Support,
-  Privileges
+  Privileges,
 } = require("../db.js");
 const db = require("../db.js");
-const { Sequelize } = require("sequelize");
+const { Sequelize, where } = require("sequelize");
 const Op = Sequelize.Op;
 const bcrypt = require("bcrypt");
-const { SALTROUNDS } = process.env;
-const saltRounds = SALTROUNDS;
+const saltRounds = 10;
 const myPlaintextPassword = "s0//P4$$w0rD";
 const someOtherPlaintextPassword = "not_bacon";
 
@@ -43,35 +42,19 @@ const followedInfo = {
   attributes: ["id", "username", "image", "name", "lastname"],
 };
 
-const DB_UserFollow = async (date) => {
-  const { userId, followerId } = date;
-  const follow = await User_Follow.findOne({ where: { userId } }).catch((e) =>
-    console.log(e)
-  );
-  if (follow) {
-    return follow.destroy();
-  }
-  const user = await User.findOne({ where: { id: userId } }).catch((e) => null);
-  const follower = await User.findOne({ where: { id: followerId } }).catch(
-    (e) => null
-  );
-  if (user || follower) {
-    return newFollower;
-  } else return { errors: "fatal errores" };
-};
 //fn
 const DB_findUsersEmail = async (email) => {
-  if (email == null || email == undefined) {
-    return null;
-  }
-  const findUserEmail = await User.findOne({ where: { email } });
+  if (email == null || email == undefined) return null;
+  const findUserEmail = await User.findOne({ where: { email } }).catch(
+    (e) => null
+  );
   return findUserEmail;
 };
 const DB_findUsersUsername = async (username) => {
-  if (username == null || username == undefined) {
-    return null;
-  }
-  const findUsername = await User.findOne({ where: { username } });
+  if (username == null || username == undefined) return null;
+  const findUsername = await User.findOne({ where: { username } }).catch(
+    (e) => null
+  );
   return findUsername;
 };
 const DB_findUserAll = async (query) => {
@@ -116,6 +99,7 @@ const DB_findUserQuery = async (query) => {
       "postLikes",
       followersInfo,
       followedInfo,
+      { model: User, as: "Friends", attributes: ["username", "image"] },
     ],
   });
   return findUser;
@@ -132,6 +116,7 @@ const DB_findUserParams = async (params) => {
       likeUserPost,
       followersInfo,
       followedInfo,
+      { model: User, as: "Friends", attributes: ["username", "image"] },
     ],
   });
   return findUser;
@@ -146,11 +131,25 @@ const DB_UserID = async (username) => {
   });
   return UserID;
 };
-
+const DB_findUserEmailOrUsername = async (data) => {
+  const findUser = await User.findOne({
+    where: {
+      [Op.or]: [
+        {
+          username: data,
+        },
+        {
+          email: data,
+        },
+      ],
+    },
+  });
+  return findUser;
+};
 const DB_Allcomments = async (username) => {
   user = await DB_UserID(username);
   const final = user.comments.map((comment) => {
-    return comment.dataValues;
+    if (comment.ban === false) return comment.dataValues;
   });
   return final;
 };
@@ -176,27 +175,51 @@ const DB_Postsearch = async ({ username, id }) => {
   try {
     if (username === undefined && id === undefined) {
       var post_search = await Post.findAll({
-        include: [{ model: User, attributes: ["image", "username"] }, Comment],
+        where: {
+          ban: false,
+        },
+        include: [
+          { model: User, attributes: ["image", "username"] },
+          {
+            model: Comment,
+            include: [{ model: User, attributes: ["image", "username"] }],
+          },
+          {
+            model: Likes,
+            as: "userLikes",
+            include: [{ model: User, attributes: ["username"] }],
+          },
+        ],
         order: [["createdAt", "DESC"]],
       });
+      console.log(post_search.length);
       return post_search;
     }
     if (username === undefined && id) {
+      console.log(id)
       var post_search = await Post.findOne({
         where: {
           idPost: id,
+          ban: false,
         },
-        include: [{ model: User, attributes: ["image", "username"] }, Comment],
+        include: [
+          { model: User, attributes: ["image", "username"] },
+          { model: Comment, where: { ban: false } },
+        ],
         order: [["createdAt", "DESC"]],
-      });
+      }).catch(e=> console.log(e))
       return post_search;
     } else if (id === undefined && username) {
       let userDB = await DB_UserID(username);
       var post_search = await Post.findAll({
         where: {
           userId: userDB.id,
+          ban: false,
         },
-        include: [{ model: User, attributes: ["image", "username"] }, Comment],
+        include: [
+          { model: User, attributes: ["image", "username"] },
+          { model: Comment, where: { ban: false } },
+        ],
         order: [["createdAt", "DESC"]],
       });
       return post_search;
@@ -339,7 +362,6 @@ const DB_postCreates = async (data) => {
 const DB_userSearch = async (username, email, password) => {
   // const hashPassword =  bcrypt.hashSync(password,saltRounds)
   // console.log(hashPassword)
-
   try {
     if (username && username != null) {
       var user = await User.findOne({
@@ -347,9 +369,11 @@ const DB_userSearch = async (username, email, password) => {
           username: username,
         },
       });
-
+      
       if (!user) return { error: "username" };
-
+      
+      console.log(password)
+      console.log(user.password)
       var isValid = await bcrypt.compare(password, user.password);
 
       if (!isValid) return { error: "password" };
@@ -368,7 +392,7 @@ const DB_userSearch = async (username, email, password) => {
       if (!validate) {
         return { error: "password" };
       }
-      return user;Sea
+      return user;
     }
   } catch (e) {
     return console.log("Error login", e);
@@ -393,19 +417,125 @@ const BD_searchSupport = async () => {
   }
 };
 
-const BD_createPrivileges = async (user,title) =>{
-	var privileges = await Privileges.create({
-		title,
-		userId:user.id,
-    username:user.username,
-		checked: true 
-	})
-  // privileges.findOne({include:User.username})
-  console.log(privileges)
-	return privileges
+const BD_createPrivileges = async (user) => {
+  var privileges = await Privileges.create({
+    userId: user.id,
+    username: user.username,
+    checked: true,
+    title: "Admin",
+  });
+
+  return privileges;
+};
+
+const BD_searchAdmin = async (user) => {
+  var privileges = await Privileges.findOne({
+    where: { username: user.username },
+  });
+  return privileges;
+};
+
+const BD_searchPost = async (idPost) => {
+  var post = await Post.findOne({ where: { idPost: idPost } });
+  return post;
+};
+
+const BD_banUser = async (username) => {
+  var user = await User.findOne({ where: { username: username } });
+  if (user === null) return { error: "User not exits" };
+  if (user.strike === null) {
+    user.strike = ["X"];
+    var dayBan = new Date(Date.now() + 168 * 3600 * 1000);
+    user.dayBan = dayBan;
+    user.save();
+    return {
+      Succes: "The STRIKE was applied successfully",
+      Strike: user.strike.length,
+    };
+  } else {
+    if (user.strike.length === 1) {
+      user.strike = ["X", "X"];
+      var dayBan = new Date(Date.now() + 168 * 3600 * 1000);
+      user.save();
+    } else {
+      if (user.strike.length === 2) {
+        user.strike = ["X", "X", "X"];
+        user.save();
+      }
+    }
+    return {
+      Succes: "The STRIKE was applied successfully",
+      Strike: user.strike.length,
+    };
+  }
+};
+
+const BD_loginBan = async (username) => {
+  const user = await User.findOne({ where: { username: username } });
+  const day = new Date();
+  if (user.strike?.length === 3) {
+    return { error: "You are temporarily suspended" };
+  }
+  if (user.dayBan !== null) {
+    if (day < user.dayBan) {
+      return {};
+    }
+  }
+  user.dayBan = null;
+  return {};
+};
+
+const BD_banComment = async (idComment) => {
+  const comment = await Comment.findOne({ where: { id: idComment } });
+  if (comment === null) return { error: "Error, comment not found" };
+  comment.ban = true;
+  comment.save();
+  return { Succes: "The BAN was applied successfully" };
+};
+
+const DB_AdminSignUp = async () =>{
+  const user = {
+    "username": "admin",
+    "name":"admin",
+    "lastname":"admin",
+    "password":"Contr1234",
+    "email":"admin@gmail.com",
+    "image":"http://pm1.narvii.com/6750/8ac0676013474827a00f3dde5dd83009ec20f6ebv2_00.jpg",
+  }
+
+  const userRegister = await axios
+        .post("http://localhost:3001/user/register", user)
+        .catch((e) => e);
+
+  const admin = await axios
+      .post("http://localhost:3001/admin/register", user)
+      .catch((e) => e);
+
+  return admin;
 }
 
+const validatesupport = async (postReported, username) => {
+  const report = await Support.findOne({where:{
+    postReported,
+    username
+    }});
+    
+  return report
+}
+
+const DB_DestroyMessage = async (id) => {
+  try{
+    const erasePost = await Support.findOne({ where: { idSupport: id } });
+    await erasePost.destroy();
+    return {Succes:"Deleted Succesfully"};
+  } catch (e) {
+    throw new Error("We had a problem with your Delete");
+  }
+}
+
+
 module.exports = {
+  DB_findUserEmailOrUsername,
   DB_findUserAll,
   DB_findUserQuery,
   DB_findUserParams,
@@ -427,7 +557,14 @@ module.exports = {
   DB_userSearch,
   DB_findUsersEmail,
   DB_findUsersUsername,
-  DB_UserFollow,
   BD_searchSupport,
-  BD_createPrivileges
+  BD_createPrivileges,
+  BD_searchAdmin,
+  BD_searchPost,
+  BD_banUser,
+  BD_loginBan,
+  BD_banComment,
+  DB_AdminSignUp,
+  validatesupport,
+  DB_DestroyMessage
 };

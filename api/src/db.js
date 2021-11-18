@@ -5,47 +5,13 @@ const BulkTags = require("../Bulk.json");
 const path = require("path");
 const { DB_USER, DB_PASSWORD, DB_HOST, DB_NAME } = process.env;
 
-
-const sequelize =
-  process.env.NODE_ENV === "production"
-    ? new Sequelize({
-        database: DB_NAME,
-        dialect: "postgres",
-        host: DB_HOST,
-        port: 5432,
-        username: DB_USER,
-        password: DB_PASSWORD,
-        pool: {
-          max: 3,
-          min: 1,
-          idle: 10000,
-        },
-        dialectOptions: {
-          ssl: {
-            require: true,
-            // Ref.: https://github.com/brianc/node-postgres/issues/2009
-            rejectUnauthorized: false,
-          },
-          keepAlive: true,
-        },
-        ssl: true,
-      })
-    : new Sequelize(
-        `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}/${DB_NAME}`,
-        { logging: false, native: false }
-      );
-
-
-/*const sequelize = new Sequelize(
+const sequelize = new Sequelize(
   `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}/${DB_NAME}`,
   {
     logging: false, // set to console.log to see the raw SQL queries
     native: false, // lets Sequelize know we can use pg-native for ~30% more speed
   }
-);*/
-
-
-
+);
 const basename = path.basename(__filename);
 
 const modelDefiners = [];
@@ -81,12 +47,15 @@ const {
   Likes,
   Message,
   Conversation,
-  Support
-
+  Support,
+  Msg,
+  Conver,
+  ChallengeComment,
+  ChallengePost,
 } = sequelize.models;
 
 //Comentar para no floodear la base de datos con tags :*
-//Tags.bulkCreate(BulkTags, { returning: true });
+// Tags.bulkCreate(BulkTags, { returning: true });
 
 // Aca vendrian las relaciones
 //Usuario
@@ -94,12 +63,43 @@ const {
 User.hasMany(Post, { onDelete: "CASCADE" });
 Post.belongsTo(User, { onDelete: "CASCADE" });
 
+//Relacion 1 a M - User -> ChallengePost
+User.hasMany(ChallengePost, { onDelete: "CASCADE" });
+ChallengePost.belongsTo(User, { onDelete: "CASCADE" });
+
 //Relacion 1 a 1 - User -> Privileges
 User.hasOne(Privileges);
 
 //Relacion 1 a M - User -> Comment
 User.belongsToMany(Comment, { through: User_Comment, onDelete: "CASCADE" });
 Comment.belongsTo(User, { through: User_Comment, onDelete: "CASCADE" });
+
+//Challenge
+//Relacion M a 1 - ChallengePost -> ChallengeComment
+
+ChallengePost.belongsToMany(ChallengeComment, {
+  through: "Challenge_PC",
+  onDelete: "CASCADE",
+});
+ChallengeComment.belongsTo(ChallengePost, {
+  through: "Challenge_PC",
+  onDelete: "CASCADE",
+});
+
+//Relacion M a M - ChallengePost -> Tags
+ChallengePost.belongsToMany(Tags, {
+  through: "Challenge_PT",
+  onDelete: "CASCADE",
+});
+Tags.belongsToMany(ChallengePost, {
+  through: "Challenge_PT",
+  onDelete: "CASCADE",
+});
+
+//Relacion 1 a M User -> ChallengeComment
+
+User.hasMany(ChallengeComment, { onDelete: "CASCADE" });
+ChallengeComment.belongsTo(User, { onDelete: "CASCADE" });
 
 //Post
 //Relacion M a 1 - Post -> Comment
@@ -110,16 +110,15 @@ Comment.belongsTo(Post, { through: Comment_Post, onDelete: "CASCADE" });
 Post.belongsToMany(Tags, { through: "Post_Tags", onDelete: "CASCADE" });
 Tags.belongsToMany(Post, { through: "Post_Tags", onDelete: "CASCADE" });
 
-//Likes
-User.hasMany(Likes, { as: "postLikes" });
-Post.hasMany(Likes, { as: "userLikes" });
-Likes.belongsTo(User);
-Likes.belongsTo(Post);
-
 // //Conversaciones
-Conversation.belongsToMany(User, { through: "User_Conversations", onDelete: "CASCADE" });
-User.belongsToMany(Conversation, { through: "User_Conversations", onDelete: "CASCADE" });
-
+Conversation.belongsToMany(User, {
+  through: "User_Conversations",
+  onDelete: "CASCADE",
+});
+User.belongsToMany(Conversation, {
+  through: "User_Conversations",
+  onDelete: "CASCADE",
+});
 
 // //Messages
 User.hasMany(Message, { as: "usserMessanges" });
@@ -127,12 +126,11 @@ Message.belongsTo(User);
 // Conversation.hasMany(Message, { as: "conversationMessages" })
 // Message.belongsTo(Conversation);
 
-//Likes -----> Esta linea estaba repetida :)
-/*User.hasMany(Likes,{as:"postLikes"})
-Post.hasMany(Likes,{as:"userLikes"})
-Likes.belongsTo(User)
-Likes.belongsTo(Post)
-*/
+//Likes
+User.hasMany(Likes, { as: "postLikes" });
+Post.hasMany(Likes, { as: "userLikes" });
+Likes.belongsTo(User);
+Likes.belongsTo(Post);
 
 //Follow
 
@@ -147,10 +145,33 @@ User.belongsToMany(User, {
   through: "User_Follow",
 });
 
-
 //Support 1 a M 'Un mensaje pertenece a un usuario'
-User.belongsToMany(Support, { through: 'Support_User', onDelete: "CASCADE" });
-Support.belongsTo(User, {foreignKey:"username",through: 'Support_User', onDelete: "CASCADE" });
+User.belongsToMany(Support, { through: "Support_User", onDelete: "CASCADE" });
+Support.belongsTo(User, { through: "Support_User", onDelete: "CASCADE" });
+
+// prueba de mensajes y conversaciones
+Msg.belongsTo(User);
+// User Conversation
+Conver.belongsToMany(User, { through: "User_Convers" });
+User.belongsToMany(Conver, { through: "User_Convers" });
+// Conversation
+Msg.belongsTo(Conver);
+Conver.hasMany(Msg);
+
+//Friends
+User.belongsToMany(User, { as: "Friends", through: "friends" });
+User.belongsToMany(User, {
+  as: "send",
+  through: "friendRequests",
+  foreignKey: "receivedId",
+  onDelete: "CASCADE",
+});
+User.belongsToMany(User, {
+  as: "received",
+  through: "friendRequests",
+  foreignKey: "sendId",
+  onDelete: "CASCADE",
+});
 
 module.exports = {
   ...sequelize.models,

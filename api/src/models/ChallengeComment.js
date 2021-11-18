@@ -1,20 +1,25 @@
-// Modelo de Tags
+// Modelo de challenge - comentarios
 const { DataTypes, Sequelize } = require('sequelize');
 // Exportamos una funcion que define el modelo
 // Luego le injectamos la conexion a sequelize.
 module.exports = (sequelize) => {
   // defino el modelo
-  sequelize.define('tags',{
-    label: {
+  sequelize.define('challengeComment',{
+    description: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    code: {
       type: DataTypes.STRING,
       allowNull: false,
     },
     id: {
-      type: DataTypes.UUID,
-      allowNull: false,
-      primaryKey: true,
-      defaultValue : Sequelize.UUIDV4,
-    }
+        allowNull: false,
+        unique: true,
+        type: DataTypes.UUID,
+        defaultValue: Sequelize.UUIDV4,
+        primaryKey: true,
+      },
   },{
     timestamps: false,
   });

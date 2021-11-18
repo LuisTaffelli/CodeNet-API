@@ -1,11 +1,16 @@
 const router = require("express").Router();
 const { Sequelize, Model } = require("sequelize");
-const { User, Post } = require("../db.js");
+const db = require("../db.js");
 const fn = require("./utils.js");
 const bcrypt = require("bcrypt");
-const AuthControllers = require('../controllers/AuthControllers.js')
-const { SALTROUNDS } = process.env;
-const saltRounds = SALTROUNDS;
+const path = require("path");
+const saltRounds = 10;
+const AuthControllers = require('../controllers/AuthControllers.js');
+const multer = require("multer");
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+const fs = require('fs');
+const ruta = path.resolve('./public/images')
 
 const sanitizeUser = (data) => {
   if (Array.isArray(data)) {
@@ -19,9 +24,14 @@ const sanitizeUser = (data) => {
       about: user.about,
       tags: user.tags,
       posts: user.posts,
+      strike: user.strike,
+      dayBan:user.dayBan,
+      followers:user.followers,
+      following:user.following,
+      friends:user.Friends
     }));
   }
-
+  console.log(data.posts, "posts")
   return {
     username: data.username,
     name: data.name,
@@ -32,6 +42,11 @@ const sanitizeUser = (data) => {
     about: data.about,
     tags: data.tags,
     posts: data.posts,
+    strike: data.strike,
+    dayBan:data.dayBan,
+    followers:data.followers,
+    following:data.following,
+    friends:data.Friends
   };
 };
 
@@ -41,8 +56,9 @@ router.get("/", async (req, res, next) => {
     if (Object.keys(req.query).length != 0) return next();
     let findUsers = await fn.DB_findUserAll();
 
-    findUsers = sanitizeUser(findUsers);
+    return res.send(findUsers);
 
+    findUsers = sanitizeUser(findUsers);
     res.send(findUsers);
   } catch (e) {
     console.log(e);
@@ -57,7 +73,6 @@ router.get("/", async (req, res, next) => {
       let findUser = await fn.DB_findUserQuery(req.query);
 
       findUser = sanitizeUser(findUser);
-
       if (findUser != null) return res.send(findUser);
       res.send({ errors: "User not found" }).status(200);
     }
@@ -106,7 +121,7 @@ router.get("/:username/comments", async (req, res, next) => {
   }
 });
 //REGISTER
-router.post("/register",  async (req, res, next) => {
+router.post("/register", async (req, res, next) => {
   try {
     let { email, username, password } = req.body;
     let errorsPassword = await fn.DB_validatePassword(password);
@@ -134,22 +149,32 @@ router.post("/register",  async (req, res, next) => {
   }
 });
 //UPDATE
-router.put("/:id", AuthControllers.isAuthenticated, async (req, res, next) => {
+router.put("/:id", upload.single("image"), AuthControllers.isAuthenticated, async (req, res, next) => {
+
   try {
+    
+    const {name, lastname, gitaccount, about, tags} = req.body
+    const username = req.params.id
+    const file = req.files.image
+    file.name = `${username}.${file.name.substr(file.name.length - 3)}`
+    await file.mv(`${ruta}/${file.name}`).catch((e)=>{console.log(e)})
+
+    const imagepath = `${ruta}/${username}.${file.name.substr(file.name.length - 3)}`
+    req.body.image = imagepath
     if (req.body.password) {
       let errors = await fn.DB_validatePassword(req.body.password);
       if (errors.password) return res.send(errors).status(400);
       else req.body.password = bcrypt.hashSync(req.body.password, saltRounds);
     }
 
-    const UserID = await User.findOne({
+    const UserID = await db.User.findOne({
       where: {
         username: req.params.id,
       },
-      include: [Post],
+      include: [db.Post],
     });
 
-    let validate = await fn.DB_updateUser(req.body, UserID.id);
+    let validate = await fn.DB_updateUser(req.body, UserID.id, imagepath );
 
     if (Object.keys(validate).length) return res.status(400).send(validate);
 
@@ -159,19 +184,37 @@ router.put("/:id", AuthControllers.isAuthenticated, async (req, res, next) => {
 
     return res.send({ user: userUpdated, success: true });
   } catch (e) {
-    res.sendStatus(500).send({ errors: e, success: false });
+    res.status(403).send({ errors: e, success: false });
   }
 });
-//FOLLOW/UNFOLLOW
-router.post("/follow", async (req, res, next) => {
-  const validate = await fn.DB_UserFollow(req.body);
 
-  return res.send("ok");
+
+
+
+//VALIDATE EMAIL
+router.get("/validate/email/:email", async (req, res, next) => {
+  const email = await fn.DB_findUsersEmail(req.params.email);
+  if (email) return res.send({ success: false, email: "Email in use" });
+  else return res.send({ success: true, email: "Email ok" });
+});
+// VALIDATE USERNAME
+router.get("/validate/username/:username", async (req, res, next) => {
+  const username = await fn.DB_findUsersUsername(req.params.username);
+  if (username)
+    return res.send({ success: false, username: "Username in use" });
+  else return res.send({ success: true, username: "Username ok" });
+});
+
+router.put("/validate/account", async (req, res, next) => {
   try {
-    const findUser = await fn.DB_findUserParams(req.params.username);
-    findUser
-      ? res.send(findUser.comments)
-      : res.send({ errors: "USER not found" }).status(200);
+    const findUser = await fn.DB_findUserEmailOrUsername(req.body.account);
+    if (findUser) {
+      return res.send({ success: true, msg: "Account found" });
+    } else
+      return res.send({
+        success: false,
+        msg: "Couldn't find your CodeNet account",
+      });
   } catch (e) {
     res.sendStatus(500);
   }
@@ -183,7 +226,6 @@ router.post("/follow", async (req, res, next) => {
 // DB_findUserParams
 // DB_findUserCreated
 // DB_validatePassword
-
 // DB_createUser
 // DB_updateUser
 

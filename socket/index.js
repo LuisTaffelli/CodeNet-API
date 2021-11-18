@@ -38,6 +38,40 @@ io.on("connection", (socket) => {
     });
   });
 
+   //send and get post
+   socket.on("reloadPostInfo", (post) => {
+    console.log(post);
+
+    io.emit("getPost", post.post);
+  });
+
+  //send about a notification
+  socket.on("sendNotification", ({ senderName, receiverName, id, userImage, type }) => {
+    const receiver = getUser(receiverName);
+
+    // if(senderName !== receiverName){
+      io.to(receiver?.socketId).emit("getNotification", {
+        senderName,
+        id,
+        userImage,
+        type
+      });
+    // }
+  });
+
+  // follow/unfollow
+  socket.on("setFollow", ({info, receiverName})=>{
+    const receiver = getUser(receiverName);
+
+    console.log(receiver)
+
+    // if(senderName !== receiverName){
+      io.emit("getFollow", {
+        info,
+        receiverName
+      });
+  })
+
   //when disconnect
   socket.on("disconnect", () => {
     console.log("a user disconnected!");
