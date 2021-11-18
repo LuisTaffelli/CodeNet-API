@@ -2,8 +2,8 @@ const server = require("./src/app.js");
 const { conn } = require("./src/db.js");
 
 // PARA CARGAR DATOS
-const DataUsers = require("../Mockups/DB_USERS.json");
-const dataPosts = require("../Mockups/DB_Posts.json");
+//const DataUsers = require("../Mockups/DB_USERS.json");
+//const dataPosts = require("../Mockups/DB_Posts.json");
 // const {User} = require('./src/db.js');
 
 const {
