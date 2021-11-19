@@ -17,7 +17,7 @@ server.use(cookieParser());
 server.use(morgan("dev"));
 
 // nuevo y mejorado cors
-server.use(cors({ origin: "http://localhost:3000", credentials: true }));
+server.use(cors({ origin: "*", credentials: true }));
 
 const routes = require("./routes/index.js");
 server.use("/", routes);
