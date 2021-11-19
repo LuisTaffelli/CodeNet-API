@@ -17,7 +17,7 @@ server.use(cookieParser());
 server.use(morgan("dev"));
 
 // nuevo y mejorado cors
-server.use(cors({ origin: "*", credentials: true }));
+server.use(cors({ origin: "https://nostalgic-kirch-5e0a10.netlify.app/", credentials: true }));
 
 const routes = require("./routes/index.js");
 server.use("/", routes);
