@@ -13,7 +13,7 @@ const {
 } = require("./src/routes/utils.js");
 
 // Syncing all the models at once.
-conn.sync({ force: true }).then(() => {
+conn.sync({ force: false }).then(() => {
   server.listen(process.env.PORT, () => {
     //CARGA DE DATOS
     //PASOS A SEGUIR :
