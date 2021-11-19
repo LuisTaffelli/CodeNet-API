@@ -10,7 +10,7 @@ const {
 } = require("./utils.js");
 const Op = Sequelize.Op;
 const router = Router();
-const AuthControllers = require('../controllers/AuthControllers.js')
+const AuthControllers = require("../controllers/AuthControllers.js");
 const multer = require("multer");
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
@@ -21,10 +21,12 @@ const modifiedPost = async (idPost) => {
   return await Post.findOne({
     where: { idPost },
     include: [
-      { model: User, attributes: ["image", "username"] },
+      { model: User, attributes: ["imageData", "imageType", "username"] },
       {
         model: Comment,
-        include: [{ model: User, attributes: ["image", "username"] }],
+        include: [
+          { model: User, attributes: ["imageData", "imageType", "username"] },
+        ],
       },
       {
         model: Likes,
@@ -42,8 +44,24 @@ const paginate = (page = 0, arr) => {
   let posts = arr
     .slice(page * postsPerPage, to < arr.length ? to : arr.length)
     .map((post) => {
+      if (post.user) {
+        const image = post.user.imageData?.toString("base64");
+        post.user["imageData"] = image;
+      }
+      if (post.comments) {
+        post.comments = post.comments.map((comment) => {
+          if (comment.user) {
+            const image = comment.user.imageData?.toString("base64");
+            comment.user["imageData"] = image;
+          }
+          return comment;
+        });
+
+        const image = post.user.imageData?.toString("base64");
+        post.user["imageData"] = image;
+      }
       if (post.imageData) {
-        const image = post.imageData.toString("base64");
+        const image = post.imageData?.toString("base64");
         post["imageData"] = image;
       }
       return post;
@@ -56,57 +74,69 @@ const paginate = (page = 0, arr) => {
     totalPages,
   };
 };
-
-function ordenarTags(todos, tags, orden) {
+function ordenarTags(todos, tags, orden, seguidos) {
+  if (tags?.length === 0) {
+    return ordenar(orden, todos);
+  }
   let arr;
-  let conTags = [];
-
-  let sinTags = [];
+  let conTagsSeguidos = [];
+  let sinTagsSeguidos = [];
+  let conTagsNoSeguidos = [];
+  let sinTagsNoSeguidos = [];
   arr = todos.map((post, i, arr) => {
     let cant = tags?.filter((tag) => {
-
-      if (post.tag.includes(tag)) {
+      if (post.tag?.includes(tag)) {
         return post.idPost;
       }
-
     });
+    let sigue;
+    if (seguidos?.includes(post.user.username)) {
+      sigue = true;
+    } else {
+      sigue = false;
+    }
     let c = 0;
     if (cant?.length !== 0) {
       while (c < tags?.length) {
         if (cant?.length === tags?.length - c) {
-
-          while (!conTags[c]) {
-            conTags.push([]);
+          if (sigue) {
+            while (!conTagsSeguidos[c]) {
+              conTagsSeguidos.push([]);
+            }
+            conTagsSeguidos[c] = [...conTagsSeguidos[c], post];
+          } else {
+            while (!conTagsNoSeguidos[c]) {
+              conTagsNoSeguidos.push([]);
+            }
+            conTagsNoSeguidos[c] = [...conTagsNoSeguidos[c], post];
           }
-          conTags[c] = [...conTags[c], post];
         }
         c++;
       }
     } else {
-      sinTags.push(post);
+      if (sigue) {
+        sinTagsSeguidos.push(post);
+      } else {
+        sinTagsNoSeguidos.push(post);
+      }
     }
   });
   let ordenadosPorTags = [];
+
+  let conTags = [...conTagsSeguidos, ...conTagsNoSeguidos];
   for (let arr of conTags) {
-    if (orden === "cronologico") {
-      ordenadosPorTags = [...ordenadosPorTags, ...arr];
-    } else {
-      ordenadosPorTags = [...ordenadosPorTags, ...ordenar(orden, arr)];
-    }
+    ordenadosPorTags = [...ordenadosPorTags, ...ordenar(orden, arr)];
   }
-  let ordenadosSinTags;
-  if (orden === "cronologico") {
-    ordenadosSinTags = sinTags;
-  } else {
-    ordenadosSinTags = ordenar(orden, sinTags);
-  }
+
+  let ordenadosSinTags = [
+    ...ordenar(orden, sinTagsSeguidos),
+    ...ordenar(orden, sinTagsNoSeguidos),
+  ];
+
   return [...ordenadosPorTags, ...ordenadosSinTags];
 }
 
-
 function ordenamiento(arr, orden) {
-  console.log(arr, orden);
-
   return arr.sort(function (a, b) {
     if (a[orden]?.length < b[orden]?.length) {
       return 1;
@@ -135,6 +165,8 @@ const ordenar = (how, arr) => {
       }
       return 0;
     });
+  } else if (how === "cronologico") {
+    return arr;
   } else {
     return ordenamiento(arr, how);
   }
@@ -143,13 +175,11 @@ const ordenar = (how, arr) => {
 router.get("/", async (req, res) => {
   // const posts = await Post.findAll({order: [['createdAt', 'DESC']]})
   // return res.send(posts)
-
-  const { tag, page, orden } = req.query;
-
-  const tags = tag?.split(",")
-
+  const { tag, page, orden, seguido } = req.query;
+  const tags = tag?.split(",");
+  const seguidos = seguido.split(",");
   const allPosts = await DB_Postsearch({});
-  let finalPosts = ordenarTags(allPosts, tags, orden);
+  let finalPosts = ordenarTags(allPosts, tags, orden, seguidos);
   // let postCategoria = allPosts.filter((e) =>
   //   e.tag
   //     .map((postTag) => postTag && postTag.toLowerCase())
@@ -164,16 +194,12 @@ router.get("/", async (req, res) => {
 
 //Trae todos los posteos que hizo un usuario
 router.get("/", async (req, res, next) => {
-
-  console.log("holaaaaaa");
-
   try {
     const { username } = req.body;
     if (!!Number(username)) {
       return next();
     }
     const postName = await DB_Postsearch({ username: username });
-    console.log(postName);
     postName ? res.send(postName) : res.send("This user has no Post");
   } catch (e) {
     res.status(404).send("Error with the username");
@@ -187,26 +213,71 @@ router.get("/:id", async (req, res, next) => {
     // if(Number(id).toString() === 'NaN'){
     //     return next()
     // }
-    const postId = await DB_Postsearch({ id: id });
+    //const postId = await DB_Postsearch({ id: id });
+    const postId = await Post.findOne({
+      where: { idPost: id, ban: false },
+      include: [
+        { model: User, attributes: ["imageData", "imageType", "username"] },
+        {
+          model: Comment,
+          include: [
+            {
+              model: User,
+              attributes: ["imageData", "imageType", "username"],
+            },
+          ],
+        },
+        {
+          model: Likes,
+          as: "userLikes",
+          include: [{ model: User, attributes: ["username"] }],
+        },
+      ],
+    });
+
+    // La concha de tu hermana
+    if (postId?.user) {
+      const image = postId.user.imageData?.toString("base64");
+      postId.user["imageData"] = image;
+    }
+    if (postId?.comments) {
+      postId.comments = postId.comments.map((comment) => {
+        if (comment.user) {
+          const image = comment.user.imageData?.toString("base64");
+          comment.user["imageData"] = image;
+        }
+        return comment;
+      });
+
+      const image = postId.user.imageData?.toString("base64");
+      postId.user["imageData"] = image;
+    }
+    if (postId?.imageData) {
+      const image = postId.imageData?.toString("base64");
+      postId["imageData"] = image;
+    }
+
     postId
       ? res.status(200).send(postId.dataValues)
       : res.send("No post with that id");
   } catch (e) {
+    console.log(e);
     res.status(404).send("Error with the id");
   }
 });
 
-router.post("/", upload.single("image"), AuthControllers.isAuthenticated, async (req, res) => {
+// post
+router.post("/", upload.single("image"), async (req, res) => {
   let { title, content, tag, username, type } = req.body;
 
   let orden = req.query.orden;
   let tags = req.query.tags?.split(",");
-
+  let seguidos = req.query.seguido?.split(",");
 
   try {
     let userDB = await DB_UserID(username);
 
-    if (typeof tag === "string" && tag.length) tag = tag.split(",");
+    if (typeof tag === "string" && tag?.length) tag = tag?.split(",");
 
     let image = {};
     if (req.file) {
@@ -227,7 +298,7 @@ router.post("/", upload.single("image"), AuthControllers.isAuthenticated, async 
     await userDB.addPost(createPost);
 
     const allPosts = await DB_Postsearch({});
-    let finalPosts = ordenarTags(allPosts, tags, orden);
+    let finalPosts = ordenarTags(allPosts, tags, orden, seguidos);
     res.status(200).send({ ...paginate(0, finalPosts), success: true });
   } catch (e) {
     res.status(404).send({ success: false, error: e });
@@ -251,7 +322,6 @@ router.delete("/:id", AuthControllers.isAuthenticated, async (req, res) => {
 router.put("/:id", AuthControllers.isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(req.body);
     await DB_Postedit(id, req.body);
 
     const post = await modifiedPost(id);
